@@ -45,7 +45,10 @@ Param (
 	[Parameter(Mandatory=$false)]
 	[switch]$TerminalServerMode = $false,
 	[Parameter(Mandatory=$false)]
-	[switch]$DisableLogging = $false
+	[switch]$DisableLogging = $false,
+	[Parameter(Mandatory=$false)]
+	[int]$AgeOfProfile = 30
+
 )
 
 Try {
@@ -121,6 +124,10 @@ Try {
 		# Get domain profiles
 		$ProfileList = Get-ChildItem -Path "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\S-1-5-21-898*" -Force
 
+		#Cutoff date for the Age of the profile
+		$DeleteProfileDate = $(Get-Date).AddDays(-$AgeOfProfile)
+		Write-Log -Message "Profile deletion date: $DeleteProfileDate" -Severity 1 -Source $deployAppScriptFriendlyName
+
 		##*===============================================
 		##* INSTALLATION
 		##*===============================================
@@ -134,10 +141,13 @@ Try {
 
 		## <Perform Installation tasks here>
 		ForEach ($ProfileSID in $ProfileList) {
+
 			# Get the profile path and associated registry keys
 			$ProfileImagePath = Get-RegistryKey -Key $ProfileSID -Value "ProfileImagePath"
 			$Guid = Get-RegistryKey -Key $ProfileSID -Value "Guid"
 			$GuidKey = Get-RegistryKey -Key "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileGuid\${Guid}"
+			$UserSidString = Get-RegistryKey -Key "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileGuid\${Guid}" -Value "SidString"
+
 			If ($ProfileImagePath -and $Guid -and $GuidKey) {
 				Switch ($ProfileImagePath) {
 					# Define accounts to keep in conditions for the profile path, then flag deletion in the statement for the default case.
@@ -152,6 +162,13 @@ Try {
 					"${envSystemDrive}\Users\jhamil50" {Write-Log -Message "Skipping the jhamil50 profile." -Severity 1 -Source $deployAppScriptFriendlyName; $remove=$False; break}
 					default {Write-Log -Message "Found user folder to remove: ${ProfileImagePath}" -Severity 1 -Source $deployAppScriptFriendlyName; $remove=$True}
 				}
+
+				#Establish Last Use time per profile and exclude if older then cutoff date ($DeleteProfileDate)
+				$UserProfileData = Get-CimInstance -Query "Select LastUseTime from win32_userprofile Where SID='$UserSidString'"
+	  		$LastUseTime = [datetime]$UserProfileData.LastUseTime
+				If ($LastUseTime -gt $DeleteProfileDate ) {
+					Write-Log -Message "Excluding ${ProfileImagePath} from deletion due to profile activity: $LastUseTime" -Severity 1 -Source $deployAppScriptFriendlyName; $remove=$False
+	  		}
 
 				If ($remove) {
 					If (Test-Path -Path $ProfileImagePath -PathType 'Container') {
