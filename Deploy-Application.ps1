@@ -158,10 +158,21 @@ Try {
 						Write-Log -Message "Removing user folder: ${ProfileImagePath}" -Severity 1 -Source $deployAppScriptFriendlyName
 						Remove-File -Path "${ProfileImagePath}\*" -Recurse -ContinueOnError $True
 						Remove-Folder -Path $ProfileImagePath -ContinueOnError $True
-						# Take ownership of remaining files and retry removal.
-						$exitCode = Execute-Process -Path "takeown" -Parameters "/F ${ProfileImagePath} /R /A /D Y" -WindowStyle "Hidden" -WaitForMsiExec -PassThru
-						Remove-File -Path "${ProfileImagePath}\*" -Recurse -ContinueOnError $True
-						Remove-Folder -Path $ProfileImagePath -ContinueOnError $True
+
+						# If still existing... Take ownership of remaining files and retry removal.
+						If (Test-Path -Path $ProfileImagePath -PathType 'Container') {
+							$exitCode = Execute-Process -Path "takeown" -Parameters "/F ${ProfileImagePath} /R /A /D Y" -WindowStyle "Hidden" -WaitForMsiExec -PassThru
+							Remove-File -Path "${ProfileImagePath}\*" -Recurse -ContinueOnError $True
+							Remove-Folder -Path $ProfileImagePath -ContinueOnError $True
+						}
+
+						# If still existing... Robocopy is able to read paths that are > 250ish characters
+						If (Test-Path -Path $ProfileImagePath -PathType 'Container') {
+							Write-Log -Message "Running robocopy /purge then then attempting removal again ${ProfileImagePath}" -Severity 1 -Source $deployAppScriptFriendlyName
+							New-Folder -Path "C:\Windows\Management\empty"
+							$exitCode = Execute-Process -Path "robocopy" -Parameters "C:\Windows\Management\empty $ProfileImagePath /purge /r:1 /w:1" -WindowStyle "Hidden" -WaitForMsiExec -PassThru
+							Remove-Folder -Path $ProfileImagePath -ContinueOnError $True
+						}
 
 						Write-Log -Message "Removing user GUID from the registry: ${Guid}" -Severity 1 -Source $deployAppScriptFriendlyName
 						Remove-RegistryKey -Key "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileGuid\${Guid}"
