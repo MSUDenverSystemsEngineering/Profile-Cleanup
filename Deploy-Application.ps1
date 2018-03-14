@@ -128,6 +128,9 @@ Try {
 		$DeleteProfileDate = $(Get-Date).AddDays(-$AgeOfProfile)
 		Write-Log -Message "Profile deletion date: $DeleteProfileDate" -Severity 1 -Source $deployAppScriptFriendlyName
 
+		#Counter incase user profile needs renamed
+		$counter = 1
+
 		##*===============================================
 		##* INSTALLATION
 		##*===============================================
@@ -170,6 +173,13 @@ Try {
 					Write-Log -Message "Excluding ${ProfileImagePath} from deletion due to profile activity: $LastUseTime" -Severity 1 -Source $deployAppScriptFriendlyName; $remove=$False
 	  		}
 
+				#Check for previous run and increment $counter accordingly
+				$previousRun = "C:\Users\cleanFail" + $counter
+				while(Test-Path $previousRun) {
+					++$counter
+					$previousRun = "C:\Users\cleanFail" + $counter
+				}
+
 				If ($remove) {
 					If (Test-Path -Path $ProfileImagePath -PathType 'Container') {
 						Write-Log -Message "Removing user folder: ${ProfileImagePath}" -Severity 1 -Source $deployAppScriptFriendlyName
@@ -189,6 +199,12 @@ Try {
 							New-Folder -Path "C:\Windows\Management\empty"
 							$exitCode = Execute-Process -Path "robocopy" -Parameters "C:\Windows\Management\empty $ProfileImagePath /purge /r:1 /w:1" -WindowStyle "Hidden" -WaitForMsiExec -PassThru
 							Remove-Folder -Path $ProfileImagePath -ContinueOnError $True
+						}
+
+						#If still existing rename file
+						If (Test-Path -Path $ProfileImagePath -PathType 'Container') {
+							Write-Log -Message "Renaming $ProfileImagePath to C:\Users\cleanFail##" -Severity 1 -Source $deployAppScriptFriendlyName
+							Rename-Item -Path $ProfileImagePath -NewName ('cleanFail{0}' -f $counter++)
 						}
 
 						Write-Log -Message "Removing user GUID from the registry: ${Guid}" -Severity 1 -Source $deployAppScriptFriendlyName
