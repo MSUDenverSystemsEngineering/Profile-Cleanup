@@ -168,10 +168,18 @@ Try {
 
 				#Establish Last Use time per profile and exclude if older then cutoff date ($DeleteProfileDate)
 				$UserProfileData = Get-CimInstance -Query "Select LastUseTime from win32_userprofile Where SID='$UserSidString'"
-	  		$LastUseTime = [datetime]$UserProfileData.LastUseTime
-				If ($LastUseTime -gt $DeleteProfileDate ) {
+
+				If ( $UserProfileData.LastUseTime -ne $null ) {
+					$LastUseTime = [datetime]$UserProfileData.LastUseTime
+
+					If ($LastUseTime -gt $DeleteProfileDate) {
+						Write-Log -Message "Excluding ${ProfileImagePath} from deletion due to profile activity: $LastUseTime" -Severity 1 -Source $deployAppScriptFriendlyName; $remove=$False
+					}
+
+			  } Else {	
 					Write-Log -Message "Excluding ${ProfileImagePath} from deletion due to profile activity: $LastUseTime" -Severity 1 -Source $deployAppScriptFriendlyName; $remove=$False
-	  		}
+				}
+
 
 				#Check for previous run and increment $counter accordingly
 				$previousRun = "C:\Users\cleanFail" + $counter
