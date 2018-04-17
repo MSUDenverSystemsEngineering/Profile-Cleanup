@@ -149,7 +149,7 @@ Try {
 			$ProfileImagePath = Get-RegistryKey -Key $ProfileSID -Value "ProfileImagePath"
 			$Guid = Get-RegistryKey -Key $ProfileSID -Value "Guid"
 			$GuidKey = Get-RegistryKey -Key "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileGuid\${Guid}"
-			$UserSidString = Get-RegistryKey -Key "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileGuid\${Guid}" -Value "SidString"
+			#$UserSidString = Get-RegistryKey -Key "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileGuid\${Guid}" -Value "SidString"
 
 			If ($ProfileImagePath -and $Guid -and $GuidKey) {
 				Switch ($ProfileImagePath) {
