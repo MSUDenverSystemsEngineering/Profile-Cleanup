@@ -45,7 +45,10 @@ Param (
 	[Parameter(Mandatory=$false)]
 	[switch]$TerminalServerMode = $false,
 	[Parameter(Mandatory=$false)]
-	[switch]$DisableLogging = $false
+	[switch]$DisableLogging = $false,
+	[Parameter(Mandatory=$false)]
+	[int]$AgeOfProfile = 30
+
 )
 
 Try {
@@ -121,6 +124,13 @@ Try {
 		# Get domain profiles
 		$ProfileList = Get-ChildItem -Path "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\S-1-5-21-898*" -Force
 
+		#Cutoff date for the Age of the profile
+		$DeleteProfileDate = $(Get-Date).AddDays(-$AgeOfProfile)
+		Write-Log -Message "Profile deletion date: $DeleteProfileDate" -Severity 1 -Source $deployAppScriptFriendlyName
+
+		#Counter incase user profile needs renamed
+		$counter = 1
+
 		##*===============================================
 		##* INSTALLATION
 		##*===============================================
@@ -134,10 +144,13 @@ Try {
 
 		## <Perform Installation tasks here>
 		ForEach ($ProfileSID in $ProfileList) {
+
 			# Get the profile path and associated registry keys
 			$ProfileImagePath = Get-RegistryKey -Key $ProfileSID -Value "ProfileImagePath"
 			$Guid = Get-RegistryKey -Key $ProfileSID -Value "Guid"
 			$GuidKey = Get-RegistryKey -Key "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileGuid\${Guid}"
+			#$UserSidString = Get-RegistryKey -Key "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileGuid\${Guid}" -Value "SidString"
+
 			If ($ProfileImagePath -and $Guid -and $GuidKey) {
 				Switch ($ProfileImagePath) {
 					# Define accounts to keep in conditions for the profile path, then flag deletion in the statement for the default case.
@@ -153,15 +166,55 @@ Try {
 					default {Write-Log -Message "Found user folder to remove: ${ProfileImagePath}" -Severity 1 -Source $deployAppScriptFriendlyName; $remove=$True}
 				}
 
+				<#
+				#Establish Last Use time per profile and exclude if older then cutoff date ($DeleteProfileDate)
+				$UserProfileData = Get-CimInstance -Query "Select LastUseTime from win32_userprofile Where SID='$UserSidString'"
+
+				If ( $UserProfileData.LastUseTime -ne $null ) {
+					$LastUseTime = [datetime]$UserProfileData.LastUseTime
+
+					If ($LastUseTime -gt $DeleteProfileDate) {
+						Write-Log -Message "Excluding ${ProfileImagePath} from deletion due to profile activity: $LastUseTime" -Severity 1 -Source $deployAppScriptFriendlyName; $remove=$False
+					}
+
+			  } Else {
+					Write-Log -Message "Excluding ${ProfileImagePath} from deletion due to profile activity: $LastUseTime" -Severity 1 -Source $deployAppScriptFriendlyName; $remove=$False
+				}
+				#>
+
+				#Check for previous run and increment $counter accordingly
+				$previousRun = "C:\Users\cleanFail" + $counter
+				while(Test-Path $previousRun) {
+					++$counter
+					$previousRun = "C:\Users\cleanFail" + $counter
+				}
+
 				If ($remove) {
 					If (Test-Path -Path $ProfileImagePath -PathType 'Container') {
 						Write-Log -Message "Removing user folder: ${ProfileImagePath}" -Severity 1 -Source $deployAppScriptFriendlyName
 						Remove-File -Path "${ProfileImagePath}\*" -Recurse -ContinueOnError $True
 						Remove-Folder -Path $ProfileImagePath -ContinueOnError $True
-						# Take ownership of remaining files and retry removal.
-						$exitCode = Execute-Process -Path "takeown" -Parameters "/F ${ProfileImagePath} /R /A /D Y" -WindowStyle "Hidden" -WaitForMsiExec -PassThru
-						Remove-File -Path "${ProfileImagePath}\*" -Recurse -ContinueOnError $True
-						Remove-Folder -Path $ProfileImagePath -ContinueOnError $True
+
+						# If still existing... Take ownership of remaining files and retry removal.
+						If (Test-Path -Path $ProfileImagePath -PathType 'Container') {
+							$exitCode = Execute-Process -Path "takeown" -Parameters "/F ${ProfileImagePath} /R /A /D Y" -WindowStyle "Hidden" -WaitForMsiExec -PassThru
+							Remove-File -Path "${ProfileImagePath}\*" -Recurse -ContinueOnError $True
+							Remove-Folder -Path $ProfileImagePath -ContinueOnError $True
+						}
+
+						# If still existing... Robocopy is able to read paths that are > 250ish characters
+						If (Test-Path -Path $ProfileImagePath -PathType 'Container') {
+							Write-Log -Message "Running robocopy /purge then then attempting removal again ${ProfileImagePath}" -Severity 1 -Source $deployAppScriptFriendlyName
+							New-Folder -Path "C:\Windows\Management\empty"
+							$exitCode = Execute-Process -Path "robocopy" -Parameters "C:\Windows\Management\empty $ProfileImagePath /purge /r:1 /w:1" -WindowStyle "Hidden" -WaitForMsiExec -PassThru
+							Remove-Folder -Path $ProfileImagePath -ContinueOnError $True
+						}
+
+						#If still existing rename file
+						If (Test-Path -Path $ProfileImagePath -PathType 'Container') {
+							Write-Log -Message "Renaming $ProfileImagePath to C:\Users\cleanFail##" -Severity 1 -Source $deployAppScriptFriendlyName
+							Rename-Item -Path $ProfileImagePath -NewName ('cleanFail{0}' -f $counter++)
+						}
 
 						Write-Log -Message "Removing user GUID from the registry: ${Guid}" -Severity 1 -Source $deployAppScriptFriendlyName
 						Remove-RegistryKey -Key "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileGuid\${Guid}"
