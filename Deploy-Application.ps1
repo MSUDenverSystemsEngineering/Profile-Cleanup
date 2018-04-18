@@ -121,7 +121,13 @@ Try {
 		Show-InstallationProgress
 
 		## <Perform Pre-Installation tasks here>
-		# Get domain profiles
+
+		#Remove previous check for Profile Cleanup
+		If (Test-Path "$envWinDir\Management\DiskCleanup") {
+		   Remove-Folder -path "$envWinDir\Management\DiskCleanup"
+	  }
+
+		#Get Domain Profiles
 		$ProfileList = Get-ChildItem -Path "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\S-1-5-21-898*" -Force
 
 		#Cutoff date for the Age of the profile
@@ -239,6 +245,8 @@ Try {
 
 		## <Perform Post-Installation tasks here>
 		$mainExitCode = 3010
+
+		New-Folder -path "C:\Windows\Management\DiskCleanup"
 
 		## Display a message at the end of the install
 		#If (-not $useDefaultMsi) { Show-InstallationPrompt -Message "${appVendor} ${appName} ${appVersion} was installed successfully." -ButtonRightText 'OK' -Icon Information -NoWait }
