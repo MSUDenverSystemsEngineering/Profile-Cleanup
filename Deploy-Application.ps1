@@ -45,10 +45,7 @@ Param (
 	[Parameter(Mandatory=$false)]
 	[switch]$TerminalServerMode = $false,
 	[Parameter(Mandatory=$false)]
-	[switch]$DisableLogging = $false,
-	[Parameter(Mandatory=$false)]
-	[int]$AgeOfProfile = 30
-
+	[switch]$DisableLogging = $false
 )
 
 Try {
@@ -115,7 +112,7 @@ Try {
 		[string]$installPhase = 'Pre-Installation'
 
 		## Show Welcome Message, verify there is enough disk space to complete the install, and persist the prompt
-		Show-InstallationWelcome  -CheckDiskSpace -PersistPrompt
+		Show-InstallationWelcome -CloseApps 'iexplore'  -CheckDiskSpace -PersistPrompt
 
 		## Show Progress Message (with the default message)
 		Show-InstallationProgress
@@ -226,11 +223,11 @@ Try {
 						Remove-RegistryKey -Key "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileGuid\${Guid}"
 
 						Write-Log -Message "Removing user SID from the registry: ${ProfileSID}" -Severity 1 -Source $deployAppScriptFriendlyName
-						Remove-RegistryKey -Key "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\${ProfileSID}"
+						Remove-RegistryKey -Key "${ProfileSID}"
 					} Else {
 						Write-Log -Message "User folder ${ProfileImagePath} does not exist. Deleting user GUID and SID from the registry..." -Severity 2 -Source $deployAppScriptFriendlyName
 						Remove-RegistryKey -Key "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileGuid\${Guid}"
-						Remove-RegistryKey -Key "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\${ProfileSID}"
+						Remove-RegistryKey -Key "${ProfileSID}"
 					}
 				}
 			} Else {
@@ -245,7 +242,6 @@ Try {
 
 		## <Perform Post-Installation tasks here>
 		$mainExitCode = 3010
-
 		New-Folder -path "C:\Windows\Management\DiskCleanup"
 
 		## Display a message at the end of the install
